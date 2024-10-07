@@ -20,6 +20,9 @@ To start mining with **Shaipot**, you need to provide the necessary arguments to
 - `--threads <AMT>`  
   Specifies the number of threads to use for mining. By default, the miner will automatically detect the optimal number of threads based on your system's available cores, but you can override this by specifying a value manually.
 
+- `--vdftime <SECONDS>`  
+  Specifies the number of seconds to wait before bailing out of the Hamiltonian graph search for mining. By default, the miner will automatically use 1 second. However, for slower CPUs this might need to be adjusted. 
+
 ## Compilation
 
 To ensure **Shaipot** is compiled with the highest optimization for your CPU, use the following command:
@@ -33,7 +36,7 @@ This will optimize the build for your specific system, ensuring maximum performa
 After compilation, the resulting executable will be located in the `target/release` directory. You can run it from there using the following command:
 
 ```bash
-./target/release/shaipot --address <shaicoin_address> --pool <POOL_URL> [--threads <AMT>]
+./target/release/shaipot --address <shaicoin_address> --pool <POOL_URL> [--threads <AMT>] [--vdftime <SECONDS>]
 ```
 
 Make sure to replace `<shaicoin_address>` and `<POOL_URL>` with your actual Shaicoin address and the pool URL you're using.
@@ -44,6 +47,11 @@ Once compiled, **Shaipot** is ready to run! Simply use the command provided abov
 
 ```bash
 ./target/release/shaipot --address sh1qeexkz69dz6j4q0zt0pkn36650yevwc8eksqeuu --pool ws://pool.shaicoin.org --threads 4
+```
+
+Example usage of vdftime looks like the following
+```bash
+--vdftime 1.5
 ```
 
 This will start the mining process, and you'll see output as **Shaipot** connects to the pool and begins mining.

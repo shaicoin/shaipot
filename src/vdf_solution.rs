@@ -6,12 +6,18 @@ pub const GRAPH_SIZE: u16 = 2008;
 
 pub struct HCGraphUtil {
     start_time: Instant,
+    vdf_bailout: u64
 }
 
 impl HCGraphUtil {
-    pub fn new() -> Self {
+    pub fn new(vdf_bailout: Option<u64>) -> Self {
+        let bailout_timer: u64 = match vdf_bailout {
+            Some(timer) => { timer },
+            None => { 1000 } // default to 1 second
+        };
         HCGraphUtil {
             start_time: Instant::now(),
+            vdf_bailout: bailout_timer
         }
     }
 
@@ -105,7 +111,7 @@ impl HCGraphUtil {
         pos: usize,
     ) -> bool {
         let elapsed = self.start_time.elapsed();
-        if elapsed > Duration::from_secs(1) {
+        if elapsed > Duration::from_millis(self.vdf_bailout) {
             return false;
         }
 

@@ -66,6 +66,7 @@ async fn main() {
     // Handle Ctrl+C signal
     tokio::spawn(handle_exit_signals());
 
+    let bailout_timer = args.vdftime_parsed;
     let miner_id = args.address.unwrap();
     let request = args.pool.unwrap().clone().into_client_request().unwrap();
     let (ws_stream, _) = connect_async(request)
@@ -94,7 +95,7 @@ async fn main() {
         let miner_id = miner_id.clone();
 
         thread::spawn(move || {
-            let mut hc_util = HCGraphUtil::new();
+            let mut hc_util = HCGraphUtil::new(bailout_timer);
             loop {
                 let job_option = unsafe {
                     let job_ptr = current_job_loop.load(Ordering::SeqCst);
