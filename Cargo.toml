@@ -1,0 +1,20 @@
+[package]
+name = "shaipot"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.40.0", features = ["full"] }
+tokio-tungstenite = "0.24.0"
+tungstenite = "0.20"
+futures-util = "0.3.30"
+serde = { version = "1.0.210", features = ["derive"] }
+serde_json = "1.0.128"
+rand = "0.8.5"
+colored = "2.1.0"
+hex = "0.4.3"
+primitive-types = "0.13.1"
+num_cpus = "1.16.0"
+clap = { version = "4.5.18", features = ["derive"] }
+sha2 = "0.10.8"
+rand_mt = "4.2.2"
