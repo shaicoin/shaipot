@@ -23,21 +23,24 @@ mod ascii_art;
 mod models;
 mod hasher;
 mod utils;
+mod api;
 
 use utils::*;
-use std::ptr;
 use models::*;
 use hasher::*;
 use colored::*;
 use std::thread;
 use ascii_art::*;
 use std::sync::Arc;
+use std::process::exit;
 use std::time::Duration;
+use tokio::sync::{Mutex};
+use crate::api::MinerState;
 use vdf_solution::HCGraphUtil;
 use futures_util::{StreamExt, SinkExt};
+use std::sync::{atomic::{AtomicUsize, Ordering}, mpsc};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-use std::sync::{atomic::{AtomicUsize, AtomicPtr, Ordering}, mpsc};
 
 #[tokio::main]
 async fn main() {
@@ -76,7 +79,15 @@ async fn main() {
     let (write, mut read) = ws_stream.split();
     let (server_sender, server_receiver) = mpsc::channel::<String>();
 
-    let current_job: Arc<AtomicPtr<Option<Job>>> = Arc::new(AtomicPtr::new(ptr::null_mut()));
+    let current_job: Arc<Mutex<Option<Job>>> = Arc::new(Mutex::new(None));
+
+    let miner_state = Arc::new(MinerState {
+        hash_count: Arc::new(AtomicUsize::new(0)),
+        accepted_shares: Arc::new(AtomicUsize::new(0)),
+        rejected_shares: Arc::new(AtomicUsize::new(0)),
+        hashrate_samples: Arc::new(Mutex::new(Vec::new())),
+        version: String::from("1.0.0"),
+    });
 
     // Spawn write task to send solutions to the server
     tokio::spawn(async move {
@@ -93,17 +104,14 @@ async fn main() {
         let hash_count = Arc::clone(&hash_count);
         let server_sender_clone = server_sender.clone();
         let miner_id = miner_id.clone();
+        let api_hash_count = Arc::clone(&miner_state.hash_count);
 
         thread::spawn(move || {
             let mut hc_util = HCGraphUtil::new(bailout_timer);
             loop {
-                let job_option = unsafe {
-                    let job_ptr = current_job_loop.load(Ordering::SeqCst);
-                    if job_ptr.is_null() {
-                        None
-                    } else {
-                        (*job_ptr).clone()
-                    }
+                let job_option = {
+                    let job_guard = current_job_loop.blocking_lock();
+                    job_guard.clone()
                 };
 
                 if let Some(job) = job_option {
@@ -112,6 +120,7 @@ async fn main() {
 
                         if let Some((hash, path_hex)) = compute_hash_no_vdf(&("".to_owned() + &job.data + &nonce), &mut hc_util) {
                             hash_count.fetch_add(1, Ordering::Relaxed);
+                            api_hash_count.fetch_add(1, Ordering::Relaxed);
 
                             if meets_target(&hash, &job.target) {
                                 let submit_msg = SubmitMessage {
@@ -125,25 +134,16 @@ async fn main() {
                                 let msg = serde_json::to_string(&submit_msg).unwrap();
                                 let _ = server_sender_clone.send(msg);
 
-                                // dealloc the job
-                                let none_ptr = Box::into_raw(Box::new(None));
-                                let old_ptr = current_job_loop.swap(none_ptr, Ordering::SeqCst);
-                                if !old_ptr.is_null() {
-                                    unsafe {
-                                        let _ = Box::from_raw(old_ptr);
-                                    }
-                                }
+                                // Clear the current job
+                                let mut job_guard = current_job_loop.blocking_lock();
+                                *job_guard = None;
                                 break;
                             }
 
-                            // Check if there is a new job
-                            let new_job_option = unsafe {
-                                let job_ptr = current_job_loop.load(Ordering::SeqCst);
-                                if job_ptr.is_null() {
-                                    None
-                                } else {
-                                    (*job_ptr).clone()
-                                }
+                            // Check if there's a new job
+                            let new_job_option = {
+                                let job_guard = current_job_loop.blocking_lock();
+                                job_guard.clone()
                             };
 
                             if new_job_option.is_none() || new_job_option.unwrap().job_id != job.job_id {
@@ -160,15 +160,37 @@ async fn main() {
     tokio::spawn(async move {
         let mut last_count = 0;
         loop {
-            thread::sleep(Duration::from_secs(5));
+            tokio::time::sleep(Duration::from_secs(5)).await;
             let count = hash_count.load(Ordering::Relaxed);
             println!("{}: {} hashes/second", "Hash rate".cyan(), (count - last_count) / 5);
             last_count = count;
         }
     });
 
+    // Spawn api hash rate monitoring task
+    let api_hashrate_clone = miner_state.clone();
+    tokio::spawn(async move {
+        let mut last_count = 0;
+        loop {
+            tokio::time::sleep(Duration::from_secs(1)).await; // Measure every second
+            let current_count = api_hashrate_clone.hash_count.load(Ordering::Relaxed);
+            let hashes_per_second = current_count - last_count;
+            let mut samples = api_hashrate_clone.hashrate_samples.lock().await;
+            samples.push(hashes_per_second as u64);
+            if samples.len() > 10 {
+                samples.remove(0);
+            }
+            last_count = current_count;
+        }
+    });
+
+
+    let api_state = miner_state.clone();
+    tokio::spawn(api::start_http_server(api_state));
+
     // Run the read task
     let current_job_clone = Arc::clone(&current_job);
+    
     loop {
         match read.next().await {
             Some(Ok(msg)) => {
@@ -181,19 +203,14 @@ async fn main() {
                             server_message.data.clone(),
                             server_message.target.clone(),
                         ) {
-                            let new_job = Box::new(Some(Job {
+                            let new_job = Job {
                                 job_id: job_id.clone(),
                                 data: data.clone(),
                                 target: target.clone(),
-                            }));
-                            let job_ptr = Box::into_raw(new_job);
+                            };
 
-                            let old_ptr = current_job_clone.swap(job_ptr, Ordering::SeqCst);
-                            if !old_ptr.is_null() {
-                                unsafe {
-                                    let _ = Box::from_raw(old_ptr); // Free the old job
-                                }
-                            }
+                            let mut job_guard = current_job_clone.lock().await;
+                            *job_guard = Some(new_job);
 
                             println!(
                                 "{} {}",
@@ -208,6 +225,7 @@ async fn main() {
                         }
                     }
                     "accepted" => {
+                        miner_state.accepted_shares.fetch_add(1, Ordering::Relaxed);
                         println!(
                             "{}",
                             format!("Share accepted")
@@ -217,6 +235,7 @@ async fn main() {
                         display_share_accepted();
                     }
                     "rejected" => {
+                        miner_state.rejected_shares.fetch_add(1, Ordering::Relaxed);
                         println!("{}", "Share rejected.".red());
                     }
                     _ => {}
@@ -224,12 +243,12 @@ async fn main() {
             }
             Some(Err(e)) => {
                 println!("Error receiving message: {:?}", e);
-                break;
+                exit(0);
             }
             None => {
                 println!("WebSocket connection closed.");
-                break;
+                exit(0);
             }
         }
-    }    
+    }
 }
