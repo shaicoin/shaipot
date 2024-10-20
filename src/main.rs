@@ -210,55 +210,64 @@ async fn main() {
         loop {
             match read.next().await {
                 Some(Ok(msg)) => {
-                    let server_message: ServerMessage =
-                        serde_json::from_str(msg.to_text().unwrap()).unwrap();
-                    match server_message.r#type.as_str() {
-                        "job" => {
-                            if let (Some(job_id), Some(data), Some(target)) = (
-                                server_message.job_id.clone(),
-                                server_message.data.clone(),
-                                server_message.target.clone(),
-                            ) {
-                                let new_job = Job {
-                                    job_id: job_id.clone(),
-                                    data: data.clone(),
-                                    target: target.clone(),
-                                };
-    
-                                let mut job_guard = current_job_clone.lock().await;
-                                *job_guard = Some(new_job);
-    
-                                println!(
-                                    "{} {}",
-                                    "Received new job:".bold().blue(),
-                                    format!(
-                                        "ID = {}, Data = {}, Target = {}",
-                                        job_id, data, target
-                                    )
-                                    .bold()
-                                    .yellow()
-                                );
+                    match msg {
+                        Message::Text(text_msg) => {
+                            let server_message: ServerMessage =
+                                serde_json::from_str(&text_msg).unwrap();
+                            match server_message.r#type.as_str() {
+                                "job" => {
+                                    if let (Some(job_id), Some(data), Some(target)) = (
+                                        server_message.job_id.clone(),
+                                        server_message.data.clone(),
+                                        server_message.target.clone(),
+                                    ) {
+                                        let new_job = Job {
+                                            job_id: job_id.clone(),
+                                            data: data.clone(),
+                                            target: target.clone(),
+                                        };
+        
+                                        let mut job_guard = current_job_clone.lock().await;
+                                        *job_guard = Some(new_job);
+        
+                                        println!(
+                                            "{} {}",
+                                            "Received new job:".bold().blue(),
+                                            format!(
+                                                "ID = {}, Data = {}, Target = {}",
+                                                job_id, data, target
+                                            )
+                                            .bold()
+                                            .yellow()
+                                        );
+                                    }
+                                }
+                                "accepted" => {
+                                    miner_state.accepted_shares.fetch_add(1, Ordering::Relaxed);
+                                    println!(
+                                        "{}",
+                                        format!("Share accepted")
+                                            .bold()
+                                            .green()
+                                    );
+                                    display_share_accepted();
+                                }
+                                "rejected" => {
+                                    miner_state.rejected_shares.fetch_add(1, Ordering::Relaxed);
+                                    println!("{}", "Share rejected.".red());
+                                }
+                                _ => {}
                             }
                         }
-                        "accepted" => {
-                            miner_state.accepted_shares.fetch_add(1, Ordering::Relaxed);
-                            println!(
-                                "{}",
-                                format!("Share accepted")
-                                    .bold()
-                                    .green()
-                            );
-                            display_share_accepted();
-                        }
-                        "rejected" => {
-                            miner_state.rejected_shares.fetch_add(1, Ordering::Relaxed);
-                            println!("{}", "Share rejected.".red());
+                        Message::Close(_) => {
+                            println!("{}", "You are now a frog.".green());
+                            std::process::exit(0);
                         }
                         _ => {}
                     }
                 }
-                Some(Err(_e)) => {
-                    println!("{}", "WebSocket connection closed. Will sleep then try to reconnect".red());
+                Some(Err(e)) => {
+                    println!("{}", "WebSocket connection closed. Will sleep then try to reconnect.".red());
                     break;
                 }
                 None => {
