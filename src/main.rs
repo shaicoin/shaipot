@@ -36,11 +36,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{Mutex};
 use crate::api::MinerState;
-use native_tls::TlsConnector;
 use vdf_solution::HCGraphUtil;
-use tokio_tungstenite::Connector;
 use futures_util::{StreamExt, SinkExt};
-use tokio_tungstenite::connect_async_tls_with_config;
 use std::sync::{atomic::{AtomicUsize, Ordering}, mpsc};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -269,7 +266,7 @@ async fn main() {
                         _ => {}
                     }
                 }
-                Some(Err(e)) => {
+                Some(Err(_e)) => {
                     println!("{}", "WebSocket connection closed. Will sleep then try to reconnect.".red());
                     break;
                 }
