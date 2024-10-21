@@ -46,7 +46,7 @@ Make sure to replace `<shaicoin_address>` and `<POOL_URL>` with your actual Shai
 Once compiled, **Shaipot** is ready to run! Simply use the command provided above, specifying your Shaicoin address, the pool URL, and (optionally) the number of threads. Here's an example:
 
 ```bash
-./target/release/shaipot --address sh1qeexkz69dz6j4q0zt0pkn36650yevwc8eksqeuu --pool ws://pool.shaicoin.org --threads 4
+./target/release/shaipot --address sh1qeexkz69dz6j4q0zt0pkn36650yevwc8eksqeuu --pool wss://pool.shaicoin.org --threads 4
 ```
 
 Example usage of vdftime looks like the following

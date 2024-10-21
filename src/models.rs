@@ -47,7 +47,7 @@ impl Args {
         println!("{}", "OPTIONAL: --vdftime <SECONDS>".bold().bright_red());
         println!();
         println!("Example mining with 4 threads:");
-        println!("./shaipot --address sh1qeexkz69dz6j4q0zt0pkn36650yevwc8eksqeuu --pool ws://pool.shaicoin.org --threads 4 --vdftime 1.5");
+        println!("./shaipot --address sh1qeexkz69dz6j4q0zt0pkn36650yevwc8eksqeuu --pool wss://pool.shaicoin.org --threads 4 --vdftime 1.5");
     }
 }
 
