@@ -1,23 +1,21 @@
 use primitive_types::U256;
 use rand_mt::Mt19937GenRand64;
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 pub const GRAPH_SIZE: u16 = 2008;
 
 pub struct HCGraphUtil {
     start_time: Instant,
-    vdf_bailout: u64
+    vdf_bailout: u64,
 }
 
 impl HCGraphUtil {
     pub fn new(vdf_bailout: Option<u64>) -> Self {
-        let bailout_timer: u64 = match vdf_bailout {
-            Some(timer) => { timer },
-            None => { 1000 } // default to 1 second
-        };
+        let bailout_timer: u64 = vdf_bailout.unwrap_or(1000); // default to 1 second
         HCGraphUtil {
             start_time: Instant::now(),
-            vdf_bailout: bailout_timer
+            vdf_bailout: bailout_timer,
         }
     }
 
@@ -29,16 +27,11 @@ impl HCGraphUtil {
         let arr: [u8; 8] = bytes[..8].try_into().expect("Slice with incorrect length");
         u64::from_le_bytes(arr)
     }
-    
-    fn get_u64(&self, data: &[u8], pos: usize) -> u64 {
-        self.read_le_u64(&data[pos * 8..(pos + 1) * 8])
-    }
-    
+
     fn extract_seed_from_hash(&self, hash: &U256) -> u64 {
         let bytes = hash.to_little_endian();
-        self.get_u64(&bytes, 0)
+        self.read_le_u64(&bytes)
     }
-    
 
     fn get_grid_size_v2(&self, hash: &U256) -> u16 {
         let hash_hex = format!("{:064x}", hash);
@@ -48,10 +41,7 @@ impl HCGraphUtil {
         let min_grid_size = 2000u64;
         let max_grid_size = GRAPH_SIZE as u64;
 
-        let mut grid_size_final = min_grid_size + (grid_size % (max_grid_size - min_grid_size));
-        if grid_size_final > max_grid_size {
-            grid_size_final = max_grid_size;
-        }
+        let grid_size_final = min_grid_size + (grid_size % (max_grid_size - min_grid_size));
         grid_size_final as u16
     }
 
@@ -59,23 +49,13 @@ impl HCGraphUtil {
         let grid_size = grid_size as usize;
         let mut graph = vec![vec![false; grid_size]; grid_size];
         let num_edges = (grid_size * (grid_size - 1)) / 2;
-        let bits_needed = num_edges;
     
         let seed = self.extract_seed_from_hash(hash);
         let mut prng = Mt19937GenRand64::from(seed.to_le_bytes());
-    
-        let mut bit_stream = Vec::with_capacity(bits_needed);
-    
-        while bit_stream.len() < bits_needed {
-            let random_bits_32: u32 = (prng.next_u64() & 0xFFFFFFFF) as u32;
-            for j in (0..32).rev() {
-                if bit_stream.len() >= bits_needed {
-                    break;
-                }
-                let bit = ((random_bits_32 >> j) & 1) == 1;
-                bit_stream.push(bit);
-            }
-        }
+
+        let bit_stream: Vec<bool> = (0..num_edges)
+            .map(|_| ((prng.next_u64() & 1) == 1))
+            .collect();
 
         let mut bit_index = 0;
         for i in 0..grid_size {
@@ -86,28 +66,22 @@ impl HCGraphUtil {
                 graph[j][i] = edge_exists;
             }
         }
-    
-        graph
-    }    
 
-    fn is_safe(&self, v: u16, graph: &Vec<Vec<bool>>, path: &[u16], pos: usize) -> bool {
+        graph
+    }
+
+    fn is_safe(&self, v: u16, graph: &Vec<Vec<bool>>, path: &[u16], visited: &HashSet<u16>, pos: usize) -> bool {
         if !graph[path[pos - 1] as usize][v as usize] {
             return false;
         }
-
-        for i in 0..pos {
-            if path[i] == v {
-                return false;
-            }
-        }
-
-        true
+        !visited.contains(&v)
     }
 
     fn hamiltonian_cycle_util(
         &mut self,
         graph: &Vec<Vec<bool>>,
         path: &mut [u16],
+        visited: &mut HashSet<u16>,
         pos: usize,
     ) -> bool {
         let elapsed = self.start_time.elapsed();
@@ -120,14 +94,16 @@ impl HCGraphUtil {
         }
 
         for v in 1..graph.len() as u16 {
-            if self.is_safe(v, graph, path, pos) {
+            if self.is_safe(v, graph, path, visited, pos) {
                 path[pos] = v;
+                visited.insert(v);
 
-                if self.hamiltonian_cycle_util(graph, path, pos + 1) {
+                if self.hamiltonian_cycle_util(graph, path, visited, pos + 1) {
                     return true;
                 }
 
                 path[pos] = u16::MAX;
+                visited.remove(&v);
             }
         }
 
@@ -140,9 +116,12 @@ impl HCGraphUtil {
 
         let mut path = vec![u16::MAX; graph.len()];
         path[0] = 0;
-        self.start_time = Instant::now();
 
-        if !self.hamiltonian_cycle_util(&graph, &mut path, 1) {
+        let mut visited = HashSet::new();
+        visited.insert(0);
+
+        self.start_time = Instant::now();
+        if !self.hamiltonian_cycle_util(&graph, &mut path, &mut visited, 1) {
             return vec![];
         }
         path
