@@ -90,11 +90,12 @@ async fn main() {
         let current_job_loop = Arc::clone(&current_job);
         let hash_count = Arc::clone(&hash_count);
         let server_sender_clone = server_sender.clone();
-        let miner_id = miner_id.clone();
+        let  miner_id = miner_id.clone();
         let api_hash_count = Arc::clone(&miner_state.hash_count);
 
         thread::spawn(move || {
             let mut hc_util = HCGraphUtil::new(bailout_timer);
+            let mut hc_util_verify = HCGraphUtil::new(bailout_timer);
             loop {
                 let job_option = {
                     let job_guard = current_job_loop.blocking_lock();
@@ -110,21 +111,24 @@ async fn main() {
                             api_hash_count.fetch_add(1, Ordering::Relaxed);
 
                             if meets_target(&hash, &job.target) {
-                                let submit_msg = SubmitMessage {
-                                    r#type: String::from("submit"),
-                                    miner_id: miner_id.to_string(),
-                                    nonce: nonce,
-                                    job_id: job.job_id.clone(),
-                                    path: path_hex,
-                                };
-
-                                let msg = serde_json::to_string(&submit_msg).unwrap();
-                                let _ = server_sender_clone.send(msg);
-
-                                // Clear the current job
-                                let mut job_guard = current_job_loop.blocking_lock();
-                                *job_guard = None;
-                                break;
+                                if let Some((_hash_v, _path_hex_v)) = compute_hash_no_vdf_verify(&("".to_owned() + &job.data + &nonce), &mut hc_util_verify) {
+                                    if meets_target(&hash, &job.target) {
+                                        let submit_msg = SubmitMessage {
+                                            r#type: String::from("submit"),
+                                            miner_id: miner_id.to_string(),
+                                            nonce: nonce,
+                                            job_id: job.job_id.clone(),
+                                            path: path_hex,
+                                        };
+        
+                                        let msg = serde_json::to_string(&submit_msg).unwrap();
+                                        let _ = server_sender_clone.send(msg);
+        
+                                        let mut job_guard = current_job_loop.blocking_lock();
+                                        *job_guard = None;
+                                        break;
+                                    }
+                                }
                             }
 
                             // Check if there's a new job
@@ -244,12 +248,6 @@ async fn main() {
                                 }
                                 "accepted" => {
                                     miner_state.accepted_shares.fetch_add(1, Ordering::Relaxed);
-                                    println!(
-                                        "{}",
-                                        format!("Share accepted")
-                                            .bold()
-                                            .green()
-                                    );
                                     display_share_accepted();
                                 }
                                 "rejected" => {
