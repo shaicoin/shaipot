@@ -64,5 +64,5 @@ pub async fn start_http_server(state: Arc<MinerState>) {
             move || stats_handler(state.clone(), start_time)
         });
 
-    warp::serve(stats_route).run(([127, 0, 0, 1], 8844)).await;
+    warp::serve(stats_route).run(([0, 0, 0, 0], 8844)).await;
 }
