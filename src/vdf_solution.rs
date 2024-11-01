@@ -181,32 +181,58 @@ impl HCGraphUtil {
         graph: &Vec<Vec<bool>>,
         path: &mut [u16],
         visited: &mut Vec<bool>,
-        pos: usize,
     ) -> bool {
-        let elapsed = self.start_time.elapsed();
-        if elapsed > Duration::from_millis(self.vdf_bailout) {
-            return false;
-        }
-
-        if pos == graph.len() {
-            return graph[path[pos - 1] as usize][path[0] as usize];
-        }
-
-        for v in 1..graph.len() {
-            if !visited[v] && self.is_safe_vp(v as u16, graph, path, pos) {
-                path[pos] = v as u16;
-                visited[v] = true;
-
-                if self.hamiltonian_cycle_util_vp(graph, path, visited, pos + 1) {
+        let mut position_vertex_stack: Vec<(usize, usize)> = Vec::new();
+        let mut pos = 1;
+        let mut vertex = 1;
+        
+        loop {
+            let elapsed = self.start_time.elapsed();
+            if elapsed > Duration::from_millis(self.vdf_bailout) {
+                return false;
+            }
+    
+            // Check if the cycle completed
+            if pos == graph.len() {
+                if graph[path[pos - 1] as usize][path[0] as usize] {
                     return true;
                 }
-
-                path[pos] = u16::MAX;
-                visited[v] = false;
+                // If not a valid cycle, backtrack
+                if let Some((prev_pos, prev_vertex)) = position_vertex_stack.pop() {
+                    visited[path[prev_pos] as usize] = false;
+                    path[prev_pos] = u16::MAX;
+                    pos = prev_pos;
+                    vertex = prev_vertex + 1;
+                    continue;
+                }
+                return false;
+            }
+    
+            // Try to find next valid vertex
+            while vertex < graph.len() {
+                if !visited[vertex] && self.is_safe_vp(vertex as u16, graph, path, pos) {
+                    path[pos] = vertex as u16;
+                    visited[vertex] = true;
+                    position_vertex_stack.push((pos, vertex));
+                    pos += 1;
+                    vertex = 1;
+                    break;
+                }
+                vertex += 1;
+            }
+    
+            // If no valid vertex found, backtrack
+            if vertex >= graph.len() {
+                if let Some((prev_pos, prev_vertex)) = position_vertex_stack.pop() {
+                    visited[path[prev_pos] as usize] = false;
+                    path[prev_pos] = u16::MAX;
+                    pos = prev_pos;
+                    vertex = prev_vertex + 1;
+                } else {
+                    return false;
+                }
             }
         }
-
-        false
     }
 
     pub fn find_hamiltonian_cycle_v2(&mut self, graph_hash: U256) -> Vec<u16> {
@@ -233,7 +259,7 @@ impl HCGraphUtil {
         visited[0] = true;
         self.start_time = Instant::now();
 
-        if !self.hamiltonian_cycle_util_vp(&graph, &mut path, &mut visited, 1) {
+        if !self.hamiltonian_cycle_util_vp(&graph, &mut path, &mut visited) {
             return vec![];
         }
         path
