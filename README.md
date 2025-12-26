@@ -1,4 +1,7 @@
 
+```
+OPENSSL_DIR=/usr OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu OPENSSL_INCLUDE_DIR=/usr/include/openssl CC=gcc CXX=g++ cargo build --release
+```
 # Shaipot - Shaicoin Miner
 
 Welcome to **Shaipot**, a Shaicoin miner written in Rust. Shaipot is designed for efficiency and speed, supporting multi-threaded mining with minimal setup.
@@ -20,23 +23,26 @@ To start mining with **Shaipot**, you need to provide the necessary arguments to
 - `--threads <AMT>`  
   Specifies the number of threads to use for mining. By default, the miner will automatically detect the optimal number of threads based on your system's available cores, but you can override this by specifying a value manually.
 
-- `--vdftime <SECONDS>`  
-  Specifies the number of seconds to wait before bailing out of the Hamiltonian graph search for mining. By default, the miner will automatically use 1 second. However, for slower CPUs this might need to be adjusted. 
+- `--vdftime1 <MILLISECONDS>`  
+  Specifies the timeout in milliseconds for the Hamiltonian path search in the first graph (worker graph). Default is 1000ms. This controls how long the miner will search for a valid path in the primary mining graph before giving up.
+
+- `--vdftime2 <MILLISECONDS>`  
+  Specifies the timeout in milliseconds for the Hamiltonian path search in the second graph (queen bee graph). Default is 10ms. This controls the timeout for the secondary graph used in the mining algorithm. 
 
 ## Compilation
 
-To ensure **Shaipot** is compiled with the highest optimization for your CPU, use the following command:
+To compile **Shaipot** with optimal performance, use the provided build script:
 
 ```bash
-cargo rustc --release -- -C opt-level=3 -C target-cpu=native -C codegen-units=1 -C debuginfo=0
+./build.sh
 ```
 
-This will optimize the build for your specific system, ensuring maximum performance during mining.
+This script will compile the project with the highest optimization settings for your CPU, ensuring maximum performance during mining.
 
 After compilation, the resulting executable will be located in the `target/release` directory. You can run it from there using the following command:
 
 ```bash
-./target/release/shaipot --address <shaicoin_address> --pool <POOL_URL> [--threads <AMT>] [--vdftime <SECONDS>]
+./target/release/shaipot --address <shaicoin_address> --pool <POOL_URL> [--threads <AMT>] [--vdftime1 <MILLISECONDS>] [--vdftime2 <MILLISECONDS>]
 ```
 
 Make sure to replace `<shaicoin_address>` and `<POOL_URL>` with your actual Shaicoin address and the pool URL you're using.
@@ -49,9 +55,14 @@ Once compiled, **Shaipot** is ready to run! Simply use the command provided abov
 ./target/release/shaipot --address sh1qeexkz69dz6j4q0zt0pkn36650yevwc8eksqeuu --pool wss://pool.shaicoin.org --threads 4
 ```
 
-Example usage of vdftime looks like the following
+Example usage with custom vdftime parameters:
 ```bash
---vdftime 1.5
+./target/release/shaipot --address sh1qeexkz69dz6j4q0zt0pkn36650yevwc8eksqeuu --pool wss://pool.shaicoin.org --threads 4 --vdftime1 1500 --vdftime2 15
+```
+
+You can also specify just one of the vdftime parameters:
+```bash
+./target/release/shaipot --address sh1qeexkz69dz6j4q0zt0pkn36650yevwc8eksqeuu --pool wss://pool.shaicoin.org --vdftime2 15
 ```
 
 This will start the mining process, and you'll see output as **Shaipot** connects to the pool and begins mining.
@@ -79,3 +90,10 @@ This will start the mining process, and you'll see output as **Shaipot** connect
 ```
 
 Happy Mining!
+
+# Update Log
+
+**2025-11-24**
+
+In the process of graph search, we first calculate the edges and then conduct the search, which can improve the speed of path search to a certain extent.
+In addition, vdftime1 and vdftime2 can be specified by yourself based on the performance of the device

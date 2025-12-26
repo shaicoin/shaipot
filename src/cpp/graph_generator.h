@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <vector>
 #include <random>
+#include <memory>
 #include "rust/cxx.h"
 
 struct GraphGenerator {

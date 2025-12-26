@@ -70,7 +70,7 @@ async fn main() {
     // Handle Ctrl+C signal
     tokio::spawn(handle_exit_signals());
 
-    let bailout_timer = args.vdftime_parsed;
+    let bailout_timer = Some(args.vdftime1_parsed);
     let miner_id = args.address.unwrap();
 
     let (server_sender, server_receiver) = mpsc::channel::<String>();
@@ -106,38 +106,40 @@ async fn main() {
                     loop {
                         let nonce = generate_nonce();
 
-                        if let Some((hash, path_hex)) = compute_hash_no_vdf(&("".to_owned() + &job.data + &nonce), &mut hc_util) {
-                            hash_count.fetch_add(1, Ordering::Relaxed);
-                            api_hash_count.fetch_add(1, Ordering::Relaxed);
-
-                            if meets_target(&hash, &job.target) {
-                                println!("SUBMITTING SHARE TO BACKEND!");
-                                
-                                let submit_msg = SubmitMessage {
-                                    r#type: String::from("submit"),
-                                    miner_id: miner_id.to_string(),
-                                    nonce: nonce,
-                                    job_id: job.job_id.clone(),
-                                    path: path_hex,
-                                };
-
-                                let msg = serde_json::to_string(&submit_msg).unwrap();
-                                let _ = server_sender_clone.send(msg);
-
-                                // Clear the current job
+                        let data_with_nonce = format!("{}{}", job.data, nonce);
+                        
+                        match compute_hash_no_vdf(
+                            &data_with_nonce, 
+                            &mut hc_util, 
+                            args.vdftime1_parsed, 
+                            args.vdftime2_parsed,
+                            &hash_count,
+                            &api_hash_count,
+                            &job,
+                            &nonce,
+                            &miner_id,
+                            &server_sender_clone
+                        ) {
+                            Some(true) => {
+                                // 找到有效解并已提交，清除当前作业
                                 let mut job_guard = current_job_loop.blocking_lock();
                                 *job_guard = None;
                                 break;
-                            }
+                            },
+                            Some(false) => {
+                                // 找到解但不满足难度要求，继续挖矿
+                                // 检查是否有新作业
+                                let new_job_option = {
+                                    let job_guard = current_job_loop.blocking_lock();
+                                    job_guard.clone()
+                                };
 
-                            // Check if there's a new job
-                            let new_job_option = {
-                                let job_guard = current_job_loop.blocking_lock();
-                                job_guard.clone()
-                            };
-
-                            if new_job_option.is_none() || new_job_option.unwrap().job_id != job.job_id {
-                                break;
+                                if new_job_option.is_none() || new_job_option.unwrap().job_id != job.job_id {
+                                    break;
+                                }
+                            },
+                            None => {
+                                // 没有找到解，继续尝试
                             }
                         }
                     }
