@@ -10,10 +10,16 @@ pub struct Args {
     pub address: Option<String>,
     #[clap(short, long)]
     pub pool: Option<String>,
-    #[clap(short, long)]
-    pub vdftime: Option<String>,
+    #[clap(long)]
+    pub vdftime1: Option<String>,
+    #[clap(long)]
+    pub vdftime2: Option<String>,
 
-    pub vdftime_parsed: Option<u64>
+    #[clap(skip)]
+    pub vdftime1_parsed: u64,
+    #[clap(skip)]
+    pub vdftime2_parsed: u64,
+
 }
 
 impl Args {
@@ -25,16 +31,25 @@ impl Args {
             std::process::exit(0);
         }
 
-        if let Some(vdftime_str) = args.vdftime.clone() {
-            match vdftime_str.parse::<f64>() {
-                Ok(vdf) => {
-                    args.vdftime_parsed = Some((vdf * 1000.0) as u64);
-                }
-                Err(_) => {
-                    args.vdftime_parsed = None;
-                }
+        // 解析vdftime1，默认值为1000毫秒
+        args.vdftime1_parsed = if let Some(vdftime1_str) = args.vdftime1.clone() {
+            match vdftime1_str.parse::<u64>() {
+                Ok(vdf1) => vdf1,
+                Err(_) => 1000, // 解析失败时使用默认值
             }
-        }
+        } else {
+            1000 // 未提供时使用默认值
+        };
+
+        // 解析vdftime2，默认值为10毫秒
+        args.vdftime2_parsed = if let Some(vdftime2_str) = args.vdftime2.clone() {
+            match vdftime2_str.parse::<u64>() {
+                Ok(vdf2) => vdf2,
+                Err(_) => 10, // 解析失败时使用默认值
+            }
+        } else {
+            10 // 未提供时使用默认值
+        };
 
         args
     }
@@ -44,10 +59,13 @@ impl Args {
         println!("{}", "Run the miner with required arguments:".bold().bright_yellow());
         println!("{}", "--address <shaicoin_address> --pool <POOL_URL>".bold().bright_red());
         println!("{}", "OPTIONAL: --threads <AMT>".bold().bright_red());
-        println!("{}", "OPTIONAL: --vdftime <SECONDS>".bold().bright_red());
+        println!("{}", "OPTIONAL: --vdftime1 <MILLISECONDS> (default: 1000)".bold().bright_red());
+        println!("{}", "OPTIONAL: --vdftime2 <MILLISECONDS> (default: 10)".bold().bright_red());
         println!();
         println!("Example mining with 4 threads:");
-        println!("./shaipot --address sh1qeexkz69dz6j4q0zt0pkn36650yevwc8eksqeuu --pool wss://pool.shaicoin.org --threads 4 --vdftime 1.5");
+        println!("./shaipot --address sh1qeexkz69dz6j4q0zt0pkn36650yevwc8eksqeuu --pool wss://pool.shaicoin.org --threads 4");
+        println!("Example with custom vdftime1 and vdftime2:");
+        println!("./shaipot --address sh1qeexkz69dz6j4q0zt0pkn36650yevwc8eksqeuu --pool wss://pool.shaicoin.org --vdftime1 2000 --vdftime2 20");
     }
 }
 
@@ -66,7 +84,6 @@ pub struct ServerMessage {
     pub job_id: Option<String>,
     pub data: Option<String>,
     pub target: Option<String>,
-    pub pplns_score: Option<f64>,
 }
 
 #[derive(Clone, Debug)]

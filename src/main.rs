@@ -24,6 +24,7 @@ mod models;
 mod hasher;
 mod utils;
 mod api;
+mod graph_bridge;
 
 use utils::*;
 use models::*;
@@ -69,7 +70,7 @@ async fn main() {
     // Handle Ctrl+C signal
     tokio::spawn(handle_exit_signals());
 
-    let bailout_timer = args.vdftime_parsed;
+    let bailout_timer = Some(args.vdftime1_parsed);
     let miner_id = args.address.unwrap();
 
     let (server_sender, server_receiver) = mpsc::channel::<String>();
@@ -81,7 +82,7 @@ async fn main() {
         accepted_shares: Arc::new(AtomicUsize::new(0)),
         rejected_shares: Arc::new(AtomicUsize::new(0)),
         hashrate_samples: Arc::new(Mutex::new(Vec::new())),
-        version: String::from("1.0.0"),
+        version: String::from("2.0.0"),
     });
 
     // Spawn worker threads for processing jobs
@@ -106,39 +107,40 @@ async fn main() {
                     loop {
                         let nonce = generate_nonce();
 
-                        if let Some((hash, path_hex)) = compute_hash_no_vdf(&("".to_owned() + &job.data + &nonce), &mut hc_util) {
-                            hash_count.fetch_add(1, Ordering::Relaxed);
-                            api_hash_count.fetch_add(1, Ordering::Relaxed);
-
-                            if meets_target(&hash, &job.target) {
-                                if let Some((_hash_v, _path_hex_v)) = compute_hash_no_vdf_verify(&("".to_owned() + &job.data + &nonce), &mut hc_util_verify) {
-                                    if meets_target(&hash, &job.target) {
-                                        let submit_msg = SubmitMessage {
-                                            r#type: String::from("submit"),
-                                            miner_id: miner_id.to_string(),
-                                            nonce: nonce,
-                                            job_id: job.job_id.clone(),
-                                            path: path_hex,
-                                        };
-        
-                                        let msg = serde_json::to_string(&submit_msg).unwrap();
-                                        let _ = server_sender_clone.send(msg);
-        
-                                        let mut job_guard = current_job_loop.blocking_lock();
-                                        *job_guard = None;
-                                        break;
-                                    }
-                                }
-                            }
-
-                            // Check if there's a new job
-                            let new_job_option = {
-                                let job_guard = current_job_loop.blocking_lock();
-                                job_guard.clone()
-                            };
-
-                            if new_job_option.is_none() || new_job_option.unwrap().job_id != job.job_id {
+                        let data_with_nonce = format!("{}{}", job.data, nonce);
+                        
+                        match compute_hash_no_vdf(
+                            &data_with_nonce, 
+                            &mut hc_util, 
+                            args.vdftime1_parsed, 
+                            args.vdftime2_parsed,
+                            &hash_count,
+                            &api_hash_count,
+                            &job,
+                            &nonce,
+                            &miner_id,
+                            &server_sender_clone
+                        ) {
+                            Some(true) => {
+                                // 找到有效解并已提交，清除当前作业
+                                let mut job_guard = current_job_loop.blocking_lock();
+                                *job_guard = None;
                                 break;
+                            },
+                            Some(false) => {
+                                // 找到解但不满足难度要求，继续挖矿
+                                // 检查是否有新作业
+                                let new_job_option = {
+                                    let job_guard = current_job_loop.blocking_lock();
+                                    job_guard.clone()
+                                };
+
+                                if new_job_option.is_none() || new_job_option.unwrap().job_id != job.job_id {
+                                    break;
+                                }
+                            },
+                            None => {
+                                // 没有找到解，继续尝试
                             }
                         }
                     }
@@ -153,7 +155,7 @@ async fn main() {
         loop {
             tokio::time::sleep(Duration::from_secs(5)).await;
             let count = hash_count.load(Ordering::Relaxed);
-            println!("{}: {} hashes/second", "Hash rate".cyan(), (count - last_count) / 5);
+            println!("{}: {:.2} hashes/second", "Hash rate".cyan(), (count - last_count) as f64 / 5.0);
             last_count = count;
         }
     });
