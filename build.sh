@@ -1,0 +1,1 @@
+OPENSSL_DIR=/usr OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu OPENSSL_INCLUDE_DIR=/usr/include/openssl CC=gcc CXX=g++ cargo build --release

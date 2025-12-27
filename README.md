@@ -43,6 +43,7 @@ After compilation, the resulting executable will be located in the `target/relea
 
 ```bash
 ./target/release/shaipot --address <shaicoin_address> --pool <POOL_URL> [--threads <AMT>] [--vdftime1 <MILLISECONDS>] [--vdftime2 <MILLISECONDS>]
+./target/release/shaipot  -a sh1qs4jvyp5r7ck0xf2ywyhcm3sn3ldzgvupmp0m8a -p ws://103.85.226.111:39283/07ffff -t 4 --vdftime2 20 --vdftime1 300
 ```
 
 Make sure to replace `<shaicoin_address>` and `<POOL_URL>` with your actual Shaicoin address and the pool URL you're using.

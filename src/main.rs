@@ -91,12 +91,11 @@ async fn main() {
         let current_job_loop = Arc::clone(&current_job);
         let hash_count = Arc::clone(&hash_count);
         let server_sender_clone = server_sender.clone();
-        let  miner_id = miner_id.clone();
+        let miner_id = miner_id.clone();
         let api_hash_count = Arc::clone(&miner_state.hash_count);
 
         thread::spawn(move || {
             let mut hc_util = HCGraphUtil::new(bailout_timer);
-            let mut hc_util_verify = HCGraphUtil::new(bailout_timer);
             loop {
                 let job_option = {
                     let job_guard = current_job_loop.blocking_lock();
@@ -250,6 +249,12 @@ async fn main() {
                                 }
                                 "accepted" => {
                                     miner_state.accepted_shares.fetch_add(1, Ordering::Relaxed);
+                                    println!(
+                                        "{}",
+                                        format!("Share accepted")
+                                            .bold()
+                                            .green()
+                                    );
                                     display_share_accepted();
                                 }
                                 "rejected" => {
